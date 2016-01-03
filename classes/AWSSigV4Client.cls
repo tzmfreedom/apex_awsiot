@@ -1,29 +1,54 @@
 public with sharing abstract class AWSSigV4Client extends AWSClient {
-
+    
     public AWSSigV4Client(String accessKeyId, String accessKeySecret, String region) {
         super(accessKeyId, accessKeySecret, region);
     }
-
+    
     /**
      * Signature Version4のAPIコールの共通メソッド
      */
     protected String call(
         String service,
+        String method,
+        String body,
         String hostname,
+        String resource,
+        List<String> signedHeaders,
+        Map<String, String> params
+    ) {
+        return this.call(
+            service,
+            method,
+            body,
+            hostname,
+            resource,
+            signedHeaders,
+            params,
+            'application/json; charset=UTF-8'
+        );
+    }
+    
+    /**
+     * Signature Version4のAPIコールの共通メソッド
+     */
+    protected String call(
+        String service,
+        String method,
+        String body,
+        String hostname,
+        String resource,
         List<String> signedHeaders,
         Map<String, String> params,
-        String resource,
-        String jsonBody,
-        String method
+        String contentType
     ) {
         DateTime dt = DateTime.now();
-        String credentialScope = dt.formatGmt('YYYYMMdd') + '/' +
+        String credentialScope = dt.formatGmt('yyyyMMdd') + '/' + 
                                  this.region + '/' + service + '/aws4_request';
-
+        
         String stringToSign = this.createStringToSign(
             'AWS4-HMAC-SHA256',
-            dt,
-            credentialScope,
+            dt, 
+            credentialScope, 
             this.createHashedCanonicalRequest(
                 'SHA256',
                 'POST',
@@ -31,13 +56,13 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
                 params,
                 new Map<String, String>{
                     'Host' => hostname,
-                    'x-amz-date' => dt.formatGmt('YYYYMMdd') + 'T' + dt.formatGmt('HHmmss') + 'Z'
+                    'x-amz-date' => dt.formatGmt('yyyyMMdd') + 'T' + dt.formatGmt('HHmmss') + 'Z'
                 },
                 signedHeaders,
-                jsonBody
+                body
             )
         );
-
+        
         String signature = this.createSignature(
             'hmacSHA256',
             dt,
@@ -45,33 +70,33 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
             service,
             Blob.valueOf(stringToSign)
         );
-
+        
         HttpRequest req = new HttpRequest();
         req.setHeader('Host', hostname);
         req.setHeader(
-            'x-amz-date',
-            dt.formatGmt('YYYYMMdd') + 'T' + dt.formatGmt('HHmmss') + 'Z'
+            'x-amz-date', 
+            dt.formatGmt('yyyyMMdd') + 'T' + dt.formatGmt('HHmmss') + 'Z'
         );
-
-        req.setHeader('Content-Type', 'application/json; charset=UTF-8');
-        req.setHeader('Content-Length', String.valueOf(jsonBody.length()));
-
+        
+        req.setHeader('Content-Type', contentType);
+        req.setHeader('Content-Length', String.valueOf(body.length()));
+        
         req.setHeader(
             'Authorization',
             'AWS4-HMAC-SHA256 Credential=' + this.getAccessKeyId() + '/' + credentialScope + ',' +
-            'SignedHeaders=' + String.join(Utility.getLowerCaseSortedList(signedHeaders), ';') + ',' +
+            'SignedHeaders=' + String.join(Utility.getLowerCaseSortedList(signedHeaders), ';') + ',' + 
             'Signature=' + signature
         );
         req.setEndpoint('https://' + hostname + resource);
         req.setMethod(method);
-
-        req.setBody(jsonBody);
-
+        
+        req.setBody(body);
+        
         Http http = new Http();
         HTTPResponse res = http.send(req);
         return res.getBody();
     }
-
+    
     /**
      * HashedCanonicalRequestを作成
      */
@@ -83,7 +108,7 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
         Map<String, String> headers,
         List<String> signedHeaders,
         String payload
-    ) {
+    ) {     
         String signature = '';
         signature += method + Constants.LF;
         signature += url + Constants.LF;
@@ -98,7 +123,7 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
                      );
         return EncodingUtil.convertToHex(
             Crypto.generateDigest(
-                algorithm,
+                algorithm, 
                 Blob.valueOf(signature)
             )
         ).toLowerCase();
@@ -113,14 +138,14 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
         String hashedCanonicalRequest
     ) {
         String stringToSign = algorithm + Constants.LF;
-        stringToSign +=
-           requestDateTime.formatGmt('YYYYMMdd') + 'T' +
+        stringToSign += 
+           requestDateTime.formatGmt('yyyyMMdd') + 'T' + 
            requestDateTime.formatGmt('HHmmss') + 'Z' + Constants.LF;
         stringToSign += credentialScope + Constants.LF;
         stringToSign += hashedCanonicalRequest;
-        return stringToSign;
+        return stringToSign;        
     }
-
+    
     /**
      * Signature生成
      */
@@ -134,7 +159,7 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
         //system.debug(stringToSign.toString());
         Blob kDate = Crypto.generateMac(
             algorithm,
-            Blob.valueOf(requestDateTime.formatGmt('YYYYMMdd')),
+            Blob.valueOf(requestDateTime.formatGmt('yyyyMMdd')),
             Blob.valueOf('AWS4' + this.getAccessKeySecret())
         );
         Blob kRegion = Crypto.generateMac(
@@ -147,13 +172,13 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
             Blob.valueOf(service),
             kRegion
         );
-
+        
         Blob kSigning = Crypto.generateMac(
             algorithm,
             Blob.valueOf('aws4_request'),
             kService
         );
-
+        
         return EncodingUtil.convertToHex(
             Crypto.generateMac(
                 algorithm,
@@ -162,6 +187,6 @@ public with sharing abstract class AWSSigV4Client extends AWSClient {
             )
         );
     }
-
+    
 
 }

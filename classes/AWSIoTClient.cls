@@ -42,12 +42,12 @@ public with sharing class AWSIoTClient extends AWSSigV4Client {
         
         return this.call(
             IOTDATA_SERVICE,
-            hostname,
-            signedHeaders,
-            params,
-            resource_path,
+            'POST',
             jsonBody,
-            'POST'
+            hostname,
+            resource_path,
+            signedHeaders,
+            params
         );
     }
 }
